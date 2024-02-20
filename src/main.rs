@@ -68,6 +68,14 @@ impl event::EventHandler<ggez::GameError> for GameState {
 
         Ok(())
     }
+
+    fn key_up_event(&mut self, _ctx: &mut Context, input: keyboard::KeyInput) -> Result<(), ggez::GameError> {
+        if vec![Some(keyboard::KeyCode::W), Some(keyboard::KeyCode::A), Some(keyboard::KeyCode::S),Some(keyboard::KeyCode::D)].iter().any(|&key| key==input.keycode) {
+            *self.world.get::<&mut Velocity>(self.player).unwrap() = Velocity {dx: 0.0, dy: 0.0 };
+        }
+
+        Ok(())
+    }
 }
 
 pub fn main() -> GameResult {
