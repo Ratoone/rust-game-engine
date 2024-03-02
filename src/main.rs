@@ -3,39 +3,49 @@ pub mod engine;
 use std::path;
 
 use engine::{
-    components::{Acceleration, Friction, MovementInput, Position, Scale, Velocity},
-    systems::{
-        system_friction, system_player_move, system_update_positions, system_update_velocity,
+    collisions::{
+        system_find_collisions, system_handle_collisions, Collider, Collisions, QuadTreeNode,
+    },
+    components::Scale,
+    input::{system_player_move, MovementInput},
+    motion::{
+        system_friction, system_update_positions, system_update_velocity, Acceleration, Friction,
+        Position, Velocity,
     },
 };
 use ggez::{
     event,
     glam::vec2,
-    graphics::{self, Image},
+    graphics::{self, Color, Image, Rect},
     input::keyboard,
+    mint::Point2,
     Context, GameResult,
 };
-use hecs::{PreparedQuery, World};
+use hecs::{Entity, PreparedQuery, World};
 
 struct GameState {
     world: World,
+    root: Option<QuadTreeNode<Entity>>,
 }
 
 impl GameState {
     fn new(ctx: &mut Context) -> GameResult<GameState> {
         let mut world = World::new();
         let _ = world
-            .spawn_batch(vec![
-                (Position { x: 0.0, y: 0.0 }, Velocity { dx: 0.0, dy: 0.0 }),
-                (
-                    Position { x: 200.0, y: 200.0 },
-                    Velocity { dx: 0.0, dy: -1.0 },
-                ),
-            ])
+            .spawn_batch(vec![(
+                Position { x: 250.0, y: 100.0 },
+                Collider {
+                    mask: 0,
+                    layer: 1,
+                    width: 20.0,
+                    height: 20.0,
+                    behaviour: Some(engine::collisions::ColliderBehaviour::Block),
+                },
+            )])
             .collect::<Vec<_>>();
 
         world.spawn((
-            Position { x: 100.0, y: 100.0 },
+            Position { x: 000.0, y: 000.0 },
             Velocity::default(),
             Acceleration {
                 dx: 0.0,
@@ -48,9 +58,16 @@ impl GameState {
                 acceleration: 200.0,
             },
             Friction { acceleration: 50.0 },
+            Collider {
+                mask: 1,
+                layer: 0,
+                width: 50.0,
+                height: 50.0,
+                behaviour: None,
+            },
         ));
 
-        Ok(GameState { world })
+        Ok(GameState { world, root: None })
     }
 }
 
@@ -59,10 +76,18 @@ impl event::EventHandler<ggez::GameError> for GameState {
         let mut motion_query = PreparedQuery::<(&mut Position, &Velocity)>::default();
         let mut acc_query = PreparedQuery::<(&mut Velocity, &Acceleration)>::default();
         let mut friction_query = PreparedQuery::<(&mut Velocity, &Friction)>::default();
+        let mut collision_query = PreparedQuery::<(&Position, &Collider)>::default();
+        let mut handle_collision_query =
+            PreparedQuery::<(&mut Position, &mut Collisions)>::default();
         let delta = &ctx.time.delta();
         system_friction(&mut self.world, &mut friction_query, delta);
         system_update_velocity(&mut self.world, &mut acc_query, delta);
         system_update_positions(&mut self.world, &mut motion_query, delta);
+        self.root = Some(system_find_collisions(
+            &mut self.world,
+            &mut collision_query,
+        ));
+        system_handle_collisions(&mut self.world, &mut handle_collision_query, delta);
         Ok(())
     }
 
@@ -70,6 +95,9 @@ impl event::EventHandler<ggez::GameError> for GameState {
         let mut canvas =
             graphics::Canvas::from_frame(ctx, graphics::Color::from([0.1, 0.2, 0.3, 1.0]));
 
+        if self.root.is_some() {
+            self.root.as_ref().unwrap().display(&mut canvas, ctx);
+        }
         for (_, (pos, image, scale)) in self.world.query_mut::<(&Position, &Image, &Scale)>() {
             canvas.draw(
                 image,
@@ -77,6 +105,16 @@ impl event::EventHandler<ggez::GameError> for GameState {
                     .dest(vec2(pos.x, pos.y))
                     .scale(vec2(scale.x, scale.y)),
             );
+        }
+
+        for (_, (pos, collider)) in self.world.query_mut::<(&Position, &Collider)>() {
+            let rect = graphics::Mesh::new_rectangle(
+                ctx,
+                graphics::DrawMode::stroke(1.0),
+                Rect::new(0.0, 0.0, collider.width, collider.height),
+                Color::WHITE,
+            )?;
+            canvas.draw(&rect, graphics::DrawParam::new().dest(vec2(pos.x, pos.y)));
         }
 
         canvas.finish(ctx)?;

@@ -1,9 +1,34 @@
 use std::time::Duration;
 
-use ggez::input::keyboard;
 use hecs::{PreparedQuery, World};
 
-use super::components::{Acceleration, Friction, MovementInput, Position, Velocity};
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
+pub struct Position {
+    pub x: f32,
+    pub y: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
+pub struct Velocity {
+    pub dx: f32,
+    pub dy: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Acceleration {
+    pub dx: f32,
+    pub dy: f32,
+    pub max_speed: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Friction {
+    pub acceleration: f32,
+}
+
+pub fn distance(pos1: &Position, pos2: &Position) -> f32 {
+    ((pos1.x - pos2.x).powi(2) + (pos1.y - pos2.y).powi(2)).sqrt()
+}
 
 pub fn system_update_positions(
     world: &mut World,
@@ -48,23 +73,6 @@ pub fn system_friction(
         } else {
             vel.dy.signum()
                 * ((vel.dy.abs() - friction.acceleration * delta.as_secs_f32()).max(0.0))
-        };
-    }
-}
-
-pub fn system_player_move(
-    world: &mut World,
-    query: &mut PreparedQuery<(&mut Acceleration, &MovementInput)>,
-    input: ggez::input::keyboard::KeyInput,
-    pressed: bool,
-) {
-    for (_id, (acc, movement)) in query.query_mut(world) {
-        match input.keycode {
-            Some(keyboard::KeyCode::A) => acc.dx = -movement.acceleration * (pressed as i32 as f32),
-            Some(keyboard::KeyCode::D) => acc.dx = movement.acceleration * (pressed as i32 as f32),
-            Some(keyboard::KeyCode::S) => acc.dy = movement.acceleration * (pressed as i32 as f32),
-            Some(keyboard::KeyCode::W) => acc.dy = -movement.acceleration * (pressed as i32 as f32),
-            _ => continue,
         };
     }
 }
